@@ -1,0 +1,100 @@
+#! python
+# -*- coding: utf-8 -*-
+# (c) 2021 <Evgeniy>
+
+import sys, os, zipfile, re
+import urllib.request
+import subprocess
+
+crowdinpath = "https://crowdin.com/backend/download/project/freecad.zip"
+
+# Progress bar method for urllib.request.urlretrieve
+prog=0
+def show_progress(block_num, block_size, total_size):
+   global prog
+   if 25/total_size*(block_num*block_size) > prog:
+      print("#", end="")
+      prog+=1
+      FreeCADGui.updateGui()
+      FreeCADGui.updateGui()
+
+# 1. Get path to $USER/AppData/Roaming/FreeCAD/ folder
+path = App.getUserAppDataDir()
+trans_path = os.path.join(path,"translations")
+zip_path = os.path.join(path,"FreeCAD_zip")
+# Create translation and FreeCAD_zip folder if it not exists
+os.makedirs(trans_path, exist_ok = True)
+os.makedirs(zip_path, exist_ok = True)
+
+# 2. Check lrealase.exe utility in folder
+lrel_path = os.path.join(path,"lrelase.exe")
+if not os.path.exists(trans_path.replace("translations","lrelease.exe")):
+   print(lrel_path+" is not found... process stopped")
+   print("please copy lrelease.exe utilty to folder: "+trans_path.replace("translations","")+" and try again!")
+   sys.exit(-1)
+
+# 3. Download zip archive from crowdin
+os.chdir(zip_path)
+print("Try to download Crowdin archive from: " +crowdinpath)
+for i in range(0,10):
+   FreeCADGui.updateGui()
+urllib.request.urlretrieve(crowdinpath, 'freecad.zip',show_progress)
+if not os.path.exists("freecad.zip"):
+	print("download from crowdin failed!")
+	sys.exit(-1)
+   
+# 4. Unzip archive   
+zfile=zipfile.ZipFile("freecad.zip")
+print("\nArchive is downloaded. Extracting it...")
+for i in range(0,10):
+   FreeCADGui.updateGui()
+zfile.extractall()
+
+# 5. Make list of files
+print("\nScan archive folder...")
+file_list = []
+supported_locales = Gui.supportedLocales().values()
+supported_locales = ["ru"]
+os.chdir(path)
+# Walk into FreeCAD unzipped folder and lrelease all files
+for root,dirs,files in os.walk(zip_path):
+   for fol in dirs:
+      if fol not in supported_locales:
+         print("Folder: "+fol+" Not supported!")         
+         continue
+      else:   
+         print("Folder: "+fol+" Ok!")    
+      locale = fol
+      for dirpath, subdirs, files in os.walk(zip_path+os.sep+locale):
+         for file in files:
+            if file.endswith(".ts"):
+               file_path = os.path.join(dirpath, file)
+               file_list.append((file_path,locale))
+print(str(len(file_list))+" files will be converted\n")
+
+# 6. Translate all files with lrelease
+progress=0
+for file_info in file_list:
+   file_path,locale=file_info
+   out_locale = locale #"de"
+   perc = 100/len(file_list)*progress
+   print(" {0:6.2f}% ".format(perc) + file_path)
+   #os.system("lrelease "+file_path)
+   FreeCADGui.updateGui()
+   subprocess.call("lrelease "+file_path, shell=True, cwd=path)
+   qm_file_path=file_path.replace(".ts",".qm")
+   if not os.path.exists(qm_file_path):
+      print("ERROR: impossible to create " + qm_file_path + " file, aborting")
+      sys.exit(-1)
+   else:
+      # Rename and move file
+      qm_new_path=file_path.replace(".ts","_"+out_locale+".qm").replace("FreeCAD_zip"+os.sep+locale,"translations")
+      if os.path.exists(qm_new_path):
+         FreeCADGui.updateGui()
+         os.remove(qm_new_path)
+      FreeCADGui.updateGui()   
+      os.rename(qm_file_path,qm_new_path)
+   progress+=1
+
+# 7. Complete message
+print("Integration of langages packages complited!") 
